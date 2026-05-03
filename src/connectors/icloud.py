@@ -39,11 +39,19 @@ class iCloudConnector(Connector):
 
         docs: list[DocumentMeta] = []
         for start in roots:
+            if not start.exists():
+                continue
             for file_path in start.rglob("*"):
                 if any(part in self.EXCLUDED_DIRS for part in file_path.parts):
                     continue
-                if file_path.is_file() and file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
-                    docs.append(self._file_to_meta(file_path))
+                if not file_path.is_file():
+                    continue
+                if file_path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
+                    continue
+                # Skip iCloud placeholder stubs (not downloaded locally)
+                if file_path.stat().st_size == 0:
+                    continue
+                docs.append(self._file_to_meta(file_path))
         return docs
 
     def read_document(self, doc: DocumentMeta) -> str:

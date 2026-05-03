@@ -1,7 +1,10 @@
 icloud:
   enabled: true
   root: "C:/Users/kirk7/iCloudDrive"
-  folders: []
+  # Scope to folders you've downloaded locally. Add more as you download them.
+  # Leave empty ([]) to scan all of iCloudDrive (slow, most files will be stubs).
+  folders:
+    - "Documents/AP/AE Software"
 
 google_drive:
   enabled: false
@@ -14,7 +17,7 @@ chunking:
   context_window: 150
 
 retrieval:
-  alpha: 0.6
+  alpha: 0.6    # vector weight in RRF (0 = pure BM25, 1 = pure vector)
   top_k: 5
   max_tokens: 4000
 
