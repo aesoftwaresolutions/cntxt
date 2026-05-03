@@ -155,7 +155,9 @@ class QueryDaemon:
             self.change_detector.stop()
 
 
-app = FastAPI(title="CNTXT")  # module-level app for uvicorn import
+# Module-level daemon + app — used by `uvicorn src.server.daemon:app`
+_daemon = QueryDaemon()
+app = _daemon.app
 
 
 def main() -> None:

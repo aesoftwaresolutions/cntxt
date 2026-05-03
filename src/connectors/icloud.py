@@ -19,6 +19,11 @@ class iCloudConnector(Connector):
         ".txt", ".md", ".py", ".js", ".ts", ".json",
         ".yaml", ".yml", ".csv", ".docx", ".pdf",
     }
+    EXCLUDED_DIRS = {
+        ".venv", "venv", "env", ".env",
+        "__pycache__", ".git", ".idea", ".vscode",
+        "node_modules", "dist", "build", ".eggs", "*.egg-info",
+    }
 
     def __init__(self, root: str | None = None, folders: list[str] | None = None):
         self.root = Path(root or "C:/Users/kirk7/iCloudDrive")
@@ -35,6 +40,8 @@ class iCloudConnector(Connector):
         docs: list[DocumentMeta] = []
         for start in roots:
             for file_path in start.rglob("*"):
+                if any(part in self.EXCLUDED_DIRS for part in file_path.parts):
+                    continue
                 if file_path.is_file() and file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
                     docs.append(self._file_to_meta(file_path))
         return docs

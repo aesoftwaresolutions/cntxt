@@ -59,18 +59,18 @@ class ContextualChunker:
     def _split_tokens(self, text: str, size: int, overlap: int) -> list[str]:
         """Split text into overlapping token windows using tiktoken."""
         tokens = self.tokenizer.encode(text)
-        chunks = []
+        if not tokens:
+            return []
 
+        chunks = []
+        step = max(1, size - overlap)
         start = 0
+
         while start < len(tokens):
             end = min(start + size, len(tokens))
-            chunk_tokens = tokens[start:end]
-            chunk_text = self.tokenizer.decode(chunk_tokens)
-            chunks.append(chunk_text)
-
-            # Move start forward by (size - overlap)
-            start = end - overlap
-            if start >= end:
+            chunks.append(self.tokenizer.decode(tokens[start:end]))
+            if end == len(tokens):
                 break
+            start += step
 
         return chunks
