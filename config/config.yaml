@@ -1,0 +1,27 @@
+icloud:
+  enabled: true
+  root: "C:/Users/kirk7/iCloudDrive"
+  folders: []
+
+google_drive:
+  enabled: false
+  credentials_file: "config/gdrive_credentials.json"
+  folder_ids: []
+
+chunking:
+  chunk_size: 512
+  chunk_overlap: 64
+  context_window: 150
+
+retrieval:
+  alpha: 0.6
+  top_k: 5
+  max_tokens: 4000
+
+server:
+  host: "127.0.0.1"
+  port: 8765
+
+anthropic:
+  embedding_model: "voyage-3"
+  batch_size: 64
