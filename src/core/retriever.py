@@ -16,17 +16,44 @@ class HybridRetriever:
         self.bm25_index: Optional[BM25Okapi] = None
 
     def index(self, chunks: list[Chunk]) -> None:
-        """Build BM25 index; also embed if an embedder is configured."""
+        """Build BM25 index from scratch; also embed if an embedder is configured."""
         self.chunks = chunks
+        self._rebuild_bm25()
+        self.embeddings = self._embed_all(chunks) if self.embedder is not None and chunks else None
 
-        self.tokenized_texts = [chunk.raw_text.lower().split() for chunk in chunks]
-        self.bm25_index = BM25Okapi(self.tokenized_texts) if chunks else None
+    def load(self, chunks: list[Chunk], embeddings: Optional[np.ndarray]) -> None:
+        """Hydrate from a previously persisted index (see IndexStore) without recomputing embeddings."""
+        self.chunks = chunks
+        self._rebuild_bm25()
+        self.embeddings = embeddings
 
-        if self.embedder is not None and chunks:
-            embeddings_list = self.embedder.embed_texts([c.text for c in chunks])
-            self.embeddings = np.array(embeddings_list)
-        else:
+    def merge(
+        self,
+        kept_chunks: list[Chunk],
+        kept_embeddings: Optional[np.ndarray],
+        new_chunks: list[Chunk],
+    ) -> None:
+        """Keep already-embedded chunks as-is and only embed the newly (re)indexed ones."""
+        self.chunks = kept_chunks + new_chunks
+        self._rebuild_bm25()
+
+        if self.embedder is None or not self.chunks:
             self.embeddings = None
+            return
+
+        new_embeddings = self._embed_all(new_chunks) if new_chunks else None
+        if kept_embeddings is not None and new_embeddings is not None:
+            self.embeddings = np.vstack([kept_embeddings, new_embeddings])
+        else:
+            self.embeddings = kept_embeddings if kept_embeddings is not None else new_embeddings
+
+    def _rebuild_bm25(self) -> None:
+        self.tokenized_texts = [chunk.raw_text.lower().split() for chunk in self.chunks]
+        self.bm25_index = BM25Okapi(self.tokenized_texts) if self.chunks else None
+
+    def _embed_all(self, chunks: list[Chunk]) -> np.ndarray:
+        embeddings_list = self.embedder.embed_texts([c.text for c in chunks])
+        return np.array(embeddings_list)
 
     def query(self, query: str, top_k: int = 5) -> list[tuple[Chunk, float]]:
         """Retrieve top_k chunks via hybrid RRF, or pure BM25 if no embedder."""

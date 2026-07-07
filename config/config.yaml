@@ -11,6 +11,15 @@ google_drive:
   credentials_file: "config/gdrive_credentials.json"
   folder_ids: []
 
+sync:
+  enabled: true
+  # Subfolder inside icloud.root where the built index (chunks, embeddings,
+  # per-doc timestamps) is stored instead of next to config.yaml. Because it
+  # lives under iCloud Drive, iCloud's own file sync mirrors it to every other
+  # device signed into this account — a daemon or `cntxt query`/`cntxt index`
+  # run elsewhere picks up already-embedded chunks instead of recomputing them.
+  icloud_subdir: ".cntxt-sync"
+
 chunking:
   chunk_size: 512
   chunk_overlap: 64

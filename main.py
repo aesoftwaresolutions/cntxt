@@ -30,6 +30,7 @@ def handle_query(args: argparse.Namespace) -> None:
 
     from src.connectors import iCloudConnector, GoogleDriveConnector
     from src.core import ContextualChunker, Embedder, HybridRetriever, ContextInjector
+    from src.indexing import DocumentIndexer, IndexStore, resolve_store_dir
 
     connector = None
     icloud_cfg = cfg.get("icloud", {})
@@ -65,13 +66,12 @@ def handle_query(args: argparse.Namespace) -> None:
     retriever = HybridRetriever(embedder=embedder, alpha=retr_cfg.get("alpha", 0.6))
     injector = ContextInjector(max_tokens=retr_cfg.get("max_tokens", 4000))
 
-    docs = connector.list_documents(folder_id=args.folder)
-    all_chunks = []
-    for doc in docs:
-        text = connector.read_document(doc)
-        all_chunks.extend(chunker.chunk_document(doc.id, doc.name, text))
+    # Reuse (and update) the persisted index instead of re-embedding every document
+    # on every query — this is also what lets a second device share the same index.
+    store = IndexStore(resolve_store_dir(cfg, Path(args.config)))
+    indexer = DocumentIndexer(connector=connector, chunker=chunker, retriever=retriever, store=store)
+    indexer.index_incremental(folder_id=args.folder)
 
-    retriever.index(all_chunks)
     results = retriever.query(args.prompt, top_k=args.top_k)
     print(injector.inject(args.prompt, results))
 
@@ -81,7 +81,7 @@ def handle_index(args: argparse.Namespace) -> None:
 
     from src.connectors import iCloudConnector, GoogleDriveConnector
     from src.core import ContextualChunker, Embedder, HybridRetriever
-    from src.indexing import DocumentIndexer
+    from src.indexing import DocumentIndexer, IndexStore, resolve_store_dir
 
     icloud_cfg = cfg.get("icloud", {})
     gdrive_cfg = cfg.get("google_drive", {})
@@ -110,8 +110,8 @@ def handle_index(args: argparse.Namespace) -> None:
     embedder = Embedder(model=ant_cfg.get("embedding_model", "voyage-3"), batch_size=ant_cfg.get("batch_size", 64))
     retriever = HybridRetriever(embedder=embedder, alpha=retr_cfg.get("alpha", 0.6))
 
-    state_path = Path(args.config).parent / "index_state.json"
-    indexer = DocumentIndexer(connector=connector, chunker=chunker, retriever=retriever, state_path=state_path)
+    store = IndexStore(resolve_store_dir(cfg, Path(args.config)))
+    indexer = DocumentIndexer(connector=connector, chunker=chunker, retriever=retriever, store=store)
 
     if args.incremental:
         count = indexer.index_incremental(folder_id=args.folder)

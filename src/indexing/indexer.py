@@ -1,29 +1,12 @@
-from dataclasses import dataclass, field
 from datetime import datetime
-import json
-import pathlib
 from typing import Any, Optional
 
+import numpy as np
+
 from src.core.chunker import Chunk
+from src.indexing.store import IndexState, IndexStore
 
-
-@dataclass
-class IndexState:
-    last_indexed: dict[str, datetime] = field(default_factory=dict)
-
-    def save(self, path: pathlib.Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        data = {doc_id: ts.isoformat() for doc_id, ts in self.last_indexed.items()}
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2)
-
-    @classmethod
-    def load(cls, path: pathlib.Path) -> "IndexState":
-        if not path.exists():
-            return cls()
-        with open(path) as f:
-            data = json.load(f)
-        return cls(last_indexed={k: datetime.fromisoformat(v) for k, v in data.items()})
+__all__ = ["DocumentIndexer", "IndexState", "IndexStore"]
 
 
 class DocumentIndexer:
@@ -32,37 +15,46 @@ class DocumentIndexer:
         connector: Any,
         chunker: Any,
         retriever: Any,
-        state_path: pathlib.Path,
+        store: IndexStore,
     ) -> None:
         self.connector = connector
         self.chunker = chunker
         self.retriever = retriever
-        self.state_path = state_path
-        self.state = IndexState.load(state_path)
+        self.store = store
+
+        self.state, chunks, embeddings = self.store.load()
+        if chunks:
+            self.retriever.load(chunks, embeddings)
 
     def index_all(self, folder_id: Optional[str] = None) -> int:
         docs = self.connector.list_documents(folder_id=folder_id)
         all_chunks: list[Chunk] = []
         for doc in docs:
-            chunks = self._index_doc(doc)
-            all_chunks.extend(chunks)
+            all_chunks.extend(self._index_doc(doc))
             self.state.last_indexed[doc.id] = datetime.now()
         self.retriever.index(all_chunks)
-        self.state.save(self.state_path)
+        self._persist()
         return len(all_chunks)
 
     def index_incremental(self, folder_id: Optional[str] = None) -> int:
         docs = self.connector.list_documents(folder_id=folder_id)
         earliest = self._earliest_checkpoint()
         changed = [d for d in docs if earliest is None or d.modified_at > earliest]
-        all_chunks: list[Chunk] = []
+        changed_ids = {d.id for d in changed}
+
+        # Keep chunks (and their embeddings) for docs that didn't change, so a poll
+        # with no changes doesn't wipe out everything indexed so far.
+        kept_chunks = [c for c in self.retriever.chunks if c.doc_id not in changed_ids]
+        kept_embeddings = self._embeddings_for(kept_chunks)
+
+        new_chunks: list[Chunk] = []
         for doc in changed:
-            chunks = self._index_doc(doc)
-            all_chunks.extend(chunks)
+            new_chunks.extend(self._index_doc(doc))
             self.state.last_indexed[doc.id] = datetime.now()
-        self.retriever.index(all_chunks)
-        self.state.save(self.state_path)
-        return len(all_chunks)
+
+        self.retriever.merge(kept_chunks, kept_embeddings, new_chunks)
+        self._persist()
+        return len(new_chunks)
 
     def _index_doc(self, doc: Any) -> list[Chunk]:
         text = self.connector.read_document(doc)
@@ -72,3 +64,13 @@ class DocumentIndexer:
         if not self.state.last_indexed:
             return None
         return min(self.state.last_indexed.values())
+
+    def _embeddings_for(self, chunks: list[Chunk]) -> Optional[np.ndarray]:
+        if self.retriever.embeddings is None or not chunks:
+            return None
+        row_by_id = {c.id: i for i, c in enumerate(self.retriever.chunks)}
+        rows = [row_by_id[c.id] for c in chunks]
+        return self.retriever.embeddings[rows]
+
+    def _persist(self) -> None:
+        self.store.save(self.state, self.retriever.chunks, self.retriever.embeddings)

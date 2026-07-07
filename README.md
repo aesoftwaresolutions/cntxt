@@ -62,6 +62,32 @@ src/
 └── server/         FastAPI daemon
 ```
 
+## Syncing the index across devices via iCloud
+
+By default (`sync.enabled: true`), the built index — chunks, embeddings, and
+per-document timestamps — is written to a folder inside `icloud.root`
+(`sync.icloud_subdir`, default `.cntxt-sync`) instead of next to
+`config.yaml`. iCloud's own file sync then mirrors that folder to every other
+device signed into the same iCloud account, so:
+
+- Running the daemon or CLI on a second Mac/PC pointed at the same iCloud
+  Drive reuses already-computed embeddings instead of re-indexing and
+  re-paying for them.
+- A background `index_incremental` pass (the daemon polls every 5 minutes)
+  only re-embeds documents that actually changed, merging the result with
+  what's already indexed rather than discarding it.
+
+This is disk-level sync, not a network sync protocol — iCloud resolves
+conflicting concurrent writes from two devices the same way it resolves any
+other file conflict (last writer wins, with a "filename 2" conflict copy if
+edits genuinely race). It also doesn't ship an iOS app: nothing runs the
+daemon on an iPhone. What syncing buys you is a shared, reusable index —
+if you want to *query* from the iPhone itself, you still need something on
+that device that can reach the daemon (e.g. tailscale/SSH to the desktop) or
+run the CLI directly (e.g. via Pythonista or a-Shell).
+
+Set `sync.enabled: false` to keep the index local to `config/.cntxt-index/`.
+
 ## Configuration
 
 See `config/config.yaml`. Key knobs:

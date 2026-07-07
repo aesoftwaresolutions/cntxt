@@ -127,14 +127,14 @@ class QueryDaemon:
         )
 
     def _init_indexer(self) -> None:
-        from src.indexing import DocumentIndexer
+        from src.indexing import DocumentIndexer, IndexStore, resolve_store_dir
 
-        state_path = self.config_path.parent / "index_state.json"
+        store = IndexStore(resolve_store_dir(self.config, self.config_path))
         self.indexer = DocumentIndexer(
             connector=self.connector,
             chunker=self.chunker,
             retriever=self.retriever,
-            state_path=state_path,
+            store=store,
         )
 
     def _init_change_detector(self) -> None:
